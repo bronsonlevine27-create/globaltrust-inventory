@@ -1,0 +1,1 @@
+# globaltrust-inventory
