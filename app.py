@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.express as px
 from google.oauth2.service_account import Credentials
 from datetime import date
-import json
 
 st.set_page_config(page_title="Global Trust | Swag Inventory", page_icon="🎁", layout="wide")
 
@@ -23,9 +22,9 @@ SCOPES = [
 @st.cache_resource
 def get_workbook():
     creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
-creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     client = gspread.authorize(creds)
-    return client.open("GlobalTrust_Swag")
+    return client.open("GlobalTrust_Inventory")
 
 wb = get_workbook()
 inventory_sheet = wb.worksheet("Inventory")
