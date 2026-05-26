@@ -22,8 +22,8 @@ SCOPES = [
 
 @st.cache_resource
 def get_workbook():
-    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
+creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     client = gspread.authorize(creds)
     return client.open("GlobalTrust_Swag")
 
