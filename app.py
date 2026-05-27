@@ -71,7 +71,7 @@ inventory_sheet = wb.worksheet("Inventory")
 log_sheet = wb.worksheet("GiveLog")
 
 # =========================
-# LOAD INVENTORY (SAFE)
+# LOAD INVENTORY
 # =========================
 @st.cache_data(ttl=30)
 def load_inventory():
@@ -81,10 +81,10 @@ def load_inventory():
     if df.empty:
         return df
 
-    # clean column names
+    # clean headers
     df.columns = df.columns.str.strip()
 
-    # check missing columns
+    # validate required columns
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
 
     if missing:
@@ -93,9 +93,20 @@ def load_inventory():
         st.stop()
 
     # safe conversions
-    df["Quantity In Stock"] = pd.to_numeric(df["Quantity In Stock"], errors="coerce").fillna(0).astype(int)
-    df["Low Stock Threshold"] = pd.to_numeric(df["Low Stock Threshold"], errors="coerce").fillna(5).astype(int)
-    df["Unit Cost ($)"] = pd.to_numeric(df["Unit Cost ($)"], errors="coerce").fillna(0.0)
+    df["Quantity In Stock"] = pd.to_numeric(
+        df["Quantity In Stock"],
+        errors="coerce"
+    ).fillna(0).astype(int)
+
+    df["Low Stock Threshold"] = pd.to_numeric(
+        df["Low Stock Threshold"],
+        errors="coerce"
+    ).fillna(5).astype(int)
+
+    df["Unit Cost ($)"] = pd.to_numeric(
+        df["Unit Cost ($)"],
+        errors="coerce"
+    ).fillna(0.0)
 
     return df
 
@@ -109,8 +120,13 @@ def load_log():
 
     if not records:
         return pd.DataFrame(columns=[
-            "Date", "Client Name", "Item", "Size/Variant",
-            "Quantity Given", "Given By", "Notes"
+            "Date",
+            "Client Name",
+            "Item",
+            "Size/Variant",
+            "Quantity Given",
+            "Given By",
+            "Notes"
         ])
 
     return pd.DataFrame(records)
@@ -131,8 +147,15 @@ def refresh():
 col1, col2 = st.columns([4, 1])
 
 with col1:
-    st.markdown('<div class="main-header">🎁 Global Trust Inventory</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Swag & Client Gift Tracker</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-header">🎁 Global Trust Inventory</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="sub-header">Swag & Client Gift Tracker</div>',
+        unsafe_allow_html=True
+    )
 
 with col2:
     if st.button("🔄 Refresh"):
@@ -150,16 +173,35 @@ df_log = load_log()
 # METRICS
 # =========================
 if not df_inv.empty:
-    total_items = df_inv["Quantity In Stock"].sum()
-    low_stock = df_inv[df_inv["Quantity In Stock"] <= df_inv["Low Stock Threshold"]]
-    total_value = (df_inv["Quantity In Stock"] * df_inv["Unit Cost ($)"]).sum()
-    total_given = pd.to_numeric(df_log["Quantity Given"], errors="coerce").sum()
+
+    total_items = int(df_inv["Quantity In Stock"].sum())
+
+    low_stock = df_inv[
+        df_inv["Quantity In Stock"]
+        <= df_inv["Low Stock Threshold"]
+    ]
+
+    total_value = (
+        df_inv["Quantity In Stock"]
+        * df_inv["Unit Cost ($)"]
+    ).sum()
+
+    total_given = 0
+
+    if not df_log.empty:
+        total_given = int(
+            pd.to_numeric(
+                df_log["Quantity Given"],
+                errors="coerce"
+            ).fillna(0).sum()
+        )
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Stock", f"{int(total_items):,}")
+
+    c1.metric("Total Stock", f"{total_items:,}")
     c2.metric("Low Stock Items", len(low_stock))
     c3.metric("Inventory Value", f"${total_value:,.2f}")
-    c4.metric("Items Given", f"{int(total_given):,}")
+    c4.metric("Items Given", f"{total_given:,}")
 
 st.markdown("---")
 
@@ -179,63 +221,99 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # TAB 1 - INVENTORY
 # =========================
 with tab1:
+
     st.subheader("Inventory")
 
     if df_inv.empty:
         st.info("No inventory data found.")
+
     else:
-        st.dataframe(df_inv, use_container_width=True)
+        st.dataframe(
+            df_inv,
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # =========================
 # TAB 2 - GIVE
 # =========================
 with tab2:
+
     st.subheader("Give Item")
 
     if df_inv.empty:
         st.info("No inventory loaded.")
+
     else:
+
         with st.form("give_form"):
+
             client = st.text_input("Client Name")
             staff = st.text_input("Given By")
 
             items = df_inv.apply(
-                lambda r: f"{r['Item']} ({r['Size/Variant']})",
+                lambda r: (
+                    f"{r['Item']} ({r['Size/Variant']})"
+                ),
                 axis=1
             ).tolist()
 
             item = st.selectbox("Item", items)
-            qty = st.number_input("Quantity", min_value=1, value=1)
+
+            qty = st.number_input(
+                "Quantity",
+                min_value=1,
+                value=1,
+                step=1
+            )
 
             notes = st.text_input("Notes")
 
             submit = st.form_submit_button("Submit")
 
         if submit:
+
             idx = items.index(item)
-            current = df_inv.iloc[idx]["Quantity In Stock"]
+
+            current = int(
+                df_inv.iloc[idx]["Quantity In Stock"]
+            )
 
             if qty > current:
-                st.error("Not enough stock")
-            else:
-                new_qty = current - qty
 
-                inventory_sheet.update_cell(idx + 2, 4, new_qty)
+                st.error(
+                    f"❌ Only {current} left in stock."
+                )
+
+            else:
+
+                new_qty = int(current - qty)
+
+                # update inventory sheet
+                inventory_sheet.update_cell(
+                    idx + 2,
+                    4,
+                    int(new_qty)
+                )
 
                 row = df_inv.iloc[idx]
 
+                # add log entry
                 log_sheet.append_row([
                     str(date.today()),
                     client,
                     row["Item"],
                     row["Size/Variant"],
-                    qty,
+                    int(qty),
                     staff,
                     notes
                 ])
 
-                st.success("Recorded successfully")
+                st.success(
+                    f"✅ Recorded {qty} item(s) given."
+                )
+
                 refresh()
 
 
@@ -243,28 +321,55 @@ with tab2:
 # TAB 3 - RESTOCK
 # =========================
 with tab3:
+
     st.subheader("Restock")
 
     if df_inv.empty:
         st.info("No inventory.")
+
     else:
+
         items = df_inv.apply(
-            lambda r: f"{r['Item']} ({r['Size/Variant']})",
+            lambda r: (
+                f"{r['Item']} ({r['Size/Variant']})"
+            ),
             axis=1
         ).tolist()
 
-        item = st.selectbox("Item", items)
-        qty = st.number_input("Add Quantity", min_value=1, value=10)
+        item = st.selectbox(
+            "Item",
+            items,
+            key="restock_item"
+        )
+
+        qty = st.number_input(
+            "Add Quantity",
+            min_value=1,
+            value=10,
+            step=1,
+            key="restock_qty"
+        )
 
         if st.button("Restock"):
+
             idx = items.index(item)
 
-            current = df_inv.iloc[idx]["Quantity In Stock"]
-            new_qty = current + qty
+            current = int(
+                df_inv.iloc[idx]["Quantity In Stock"]
+            )
 
-            inventory_sheet.update_cell(idx + 2, 4, new_qty)
+            new_qty = int(current + qty)
 
-            st.success("Restocked")
+            inventory_sheet.update_cell(
+                idx + 2,
+                4,
+                int(new_qty)
+            )
+
+            st.success(
+                f"✅ Restocked successfully."
+            )
+
             refresh()
 
 
@@ -272,10 +377,36 @@ with tab3:
 # TAB 4 - ANALYTICS
 # =========================
 with tab4:
+
     st.subheader("Analytics")
 
     if df_inv.empty:
         st.info("No data.")
+
     else:
-        fig = px.bar(df_inv, x="Item", y="Quantity In Stock", color="Category")
-        st.plotly_chart(fig, use_container_width=True)
+
+        fig = px.bar(
+            df_inv,
+            x="Item",
+            y="Quantity In Stock",
+            color="Category",
+            title="Inventory Levels"
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+        if not df_log.empty:
+
+            st.subheader("Give Log")
+
+            st.dataframe(
+                df_log.sort_values(
+                    "Date",
+                    ascending=False
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
